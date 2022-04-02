@@ -1,0 +1,6 @@
+[requires]
+diligent-core/2.5.1
+stb/cci.20210910
+
+[generators]
+cmake
