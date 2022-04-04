@@ -9,6 +9,8 @@
 #include <stb_image_write.h>
 
 #include <iostream>
+#include <vector>
+#include <string>
 
 ///
 #include <chrono>
@@ -252,19 +254,19 @@ void save_image(
         std::cerr << "Fence starting value is: " << fence->GetCompletedValue() << std::endl;
     }
 
-    for (int i = 0; i < 1000; ++i) {
-        Diligent::CopyTextureAttribs copy_attributes{
-            texture,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-            staging_texture,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
-        };
-        immediate_context->CopyTexture(copy_attributes);
-    }
+    Diligent::CopyTextureAttribs copy_attributes{
+        texture,
+        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+        staging_texture,
+        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
+    };
+    immediate_context->CopyTexture(copy_attributes);
     immediate_context->EnqueueSignal(fence, 1);
     immediate_context->Flush();
-    immediate_context->WaitForIdle();
-    render_device->IdleGPU();
+
+    // TODO: do I need any comment on this approach as well?
+    // immediate_context->WaitForIdle();
+    // render_device->IdleGPU();
 
     std::cerr << "Fence value before Wait is: " << fence->GetCompletedValue() << std::endl;
     const auto start = std::chrono::high_resolution_clock::now();
@@ -279,7 +281,7 @@ void save_image(
         0,
         0,
         Diligent::MAP_READ,
-        Diligent::MAP_FLAG_NONE,
+        Diligent::MAP_FLAG_DO_NOT_WAIT,
         nullptr,
         texture_subresource
     );
