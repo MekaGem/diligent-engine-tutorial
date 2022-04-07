@@ -1,6 +1,7 @@
 #include <DiligentCore/Graphics/GraphicsEngineVulkan/interface/EngineFactoryVk.h>
 #include <DiligentCore/Common/interface/RefCntAutoPtr.hpp>
 #include <DiligentCore/Common/interface/BasicMath.hpp>
+#include <DiligentCore/Graphics/GraphicsTools/interface/MapHelper.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -11,6 +12,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <numbers>
 
 ///
 #include <chrono>
@@ -19,10 +21,30 @@
 class Render_Pass {
 public:
     struct Constants {
-        Diligent::float4x4 model_view{};
+        Diligent::float2 reversed_size{};
+        int32_t blur_radius{};
+        float sigma{};
     };
-    static constexpr uint64_t vertices_count = 4;
-    static constexpr uint64_t indices_count = 6;
+    struct Vertex {
+        Diligent::float2 xy{};
+        Diligent::float2 uv{};
+    };
+    static constexpr std::array<Vertex, 4> vertices = {
+        Vertex{.xy = {-1.0f, -1.0f}, .uv = {0.0f, 1.0f}},
+        Vertex{.xy = {+1.0f, -1.0f}, .uv = {1.0f, 1.0f}},
+        Vertex{.xy = {+1.0f, +1.0f}, .uv = {1.0f, 0.0f}},
+        Vertex{.xy = {-1.0f, +1.0f}, .uv = {0.0f, 0.0f}},
+    };
+    static constexpr std::array<uint32_t, 6> indices = {
+        0, 1, 2,
+        2, 3, 0,
+    };
+    static constexpr std::string_view texture_uniform{"input_texture"};
+
+    ///
+    // TODO: REMOVE!!!
+    Diligent::float4 size{};
+    ///
 
     Render_Pass(
         const Diligent::RefCntAutoPtr<Diligent::IRenderDevice>& render_device_,
@@ -51,7 +73,7 @@ public:
         {
             Diligent::BufferDesc vertex_buffer_description{};
             vertex_buffer_description.Name = "Vertex Buffer";
-            vertex_buffer_description.Size = sizeof(float) * vertices_count;
+            vertex_buffer_description.Size = sizeof(Vertex) * vertices.size();
             vertex_buffer_description.BindFlags = Diligent::BIND_VERTEX_BUFFER;
             vertex_buffer_description.Usage = Diligent::USAGE_DYNAMIC;
             vertex_buffer_description.CPUAccessFlags = Diligent::CPU_ACCESS_WRITE;
@@ -62,7 +84,7 @@ public:
         {
             Diligent::BufferDesc index_buffer_description{};
             index_buffer_description.Name = "Index Buffer";
-            index_buffer_description.Size = sizeof(float) * indices_count;
+            index_buffer_description.Size = sizeof(uint32_t) * indices.size();
             index_buffer_description.BindFlags = Diligent::BIND_INDEX_BUFFER;
             index_buffer_description.Usage = Diligent::USAGE_DYNAMIC;
             index_buffer_description.CPUAccessFlags = Diligent::CPU_ACCESS_WRITE;
@@ -81,39 +103,48 @@ public:
         graphics_pipeline_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
 
         Diligent::RenderTargetBlendDesc blend_description{};
-        blend_description.BlendEnable = true;
+        blend_description.BlendEnable = false;
         blend_description.SrcBlend = Diligent::BLEND_FACTOR_SRC_ALPHA;
         blend_description.DestBlend = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
         graphics_pipeline_ci.GraphicsPipeline.BlendDesc.RenderTargets[0] = blend_description;
 
         Diligent::ShaderCreateInfo shader_ci{};
-        shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
+        shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
         shader_ci.UseCombinedTextureSamplers = true;
+        std::cerr << "shader_source_stream_factory = " << shader_source_stream_factory.RawPtr() << std::endl;
         shader_ci.pShaderSourceStreamFactory = shader_source_stream_factory;
 
         Diligent::RefCntAutoPtr<Diligent::IShader> vertex_shader{};
         {
             shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
-            shader_ci.EntryPoint = "main_vs";
+//            shader_ci.EntryPoint = "main_vs";
             shader_ci.Desc.Name = "Tutorial Vertex Shader";
             // TODO: !!!change name!!!
-            shader_ci.FilePath = "test.glsl";
+            shader_ci.FilePath = "blur.glsl";
             render_device->CreateShader(shader_ci, &vertex_shader);
+
+            if (!vertex_shader) {
+                std::exit(1);
+            }
         }
 
         Diligent::RefCntAutoPtr<Diligent::IShader> pixel_shader{};
         {
             shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_PIXEL;
-            shader_ci.EntryPoint = "main_ps";
+//            shader_ci.EntryPoint = "main_ps";
             shader_ci.Desc.Name = "Tutorial Pixel Shader";
             // TODO: !!!change name!!!
-            shader_ci.FilePath = "test.glsl";
+            shader_ci.FilePath = "blur.glsl";
             render_device->CreateShader(shader_ci, &pixel_shader);
+
+            if (!pixel_shader) {
+                std::exit(1);
+            }
         }
 
         std::vector<Diligent::LayoutElement> layout_elements = {
-            Diligent::LayoutElement{0, 0, 2, Diligent::VT_FLOAT32, false}, // position_xy
-            Diligent::LayoutElement{1, 0, 2, Diligent::VT_FLOAT32, false}, // texture_uv
+            Diligent::LayoutElement{0, 0, 2, Diligent::VT_FLOAT32, false}, // position
+            Diligent::LayoutElement{1, 0, 2, Diligent::VT_FLOAT32, false}, // tex_coords
         };
         graphics_pipeline_ci.GraphicsPipeline.InputLayout.LayoutElements = layout_elements.data();
         graphics_pipeline_ci.GraphicsPipeline.InputLayout.NumElements = static_cast<uint32_t>(layout_elements.size());
@@ -121,61 +152,117 @@ public:
         graphics_pipeline_ci.pVS = vertex_shader;
         graphics_pipeline_ci.pPS = pixel_shader;
 
-        std::vector<std::string> textures{"input_texture"};
-        std::vector<Diligent::ShaderResourceVariableDesc> shader_variable_descriptions{};
-        std::vector<Diligent::ImmutableSamplerDesc> immutable_sampler_descriptions{};
-        for (const auto& texture_name: textures) {
-            shader_variable_descriptions.emplace_back(
-                Diligent::SHADER_TYPE_PIXEL,
-                texture_name.c_str(),
-                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
-            );
-
-            Diligent::SamplerDesc sampler_description{
-                Diligent::FILTER_TYPE_POINT,
-                Diligent::FILTER_TYPE_POINT,
-                Diligent::FILTER_TYPE_POINT,
-                Diligent::TEXTURE_ADDRESS_CLAMP,
-                Diligent::TEXTURE_ADDRESS_CLAMP,
-                Diligent::TEXTURE_ADDRESS_CLAMP,
-            };
-            immutable_sampler_descriptions.emplace_back(
-                Diligent::SHADER_TYPE_PIXEL,
-                texture_name.c_str(),
-                sampler_description
-            );
-        }
+        Diligent::ShaderResourceVariableDesc resource_variable_description{
+            Diligent::SHADER_TYPE_PIXEL,
+            texture_uniform.data(),
+            Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC,
+        };
+        Diligent::SamplerDesc sampler_description{
+            Diligent::FILTER_TYPE_POINT,
+            Diligent::FILTER_TYPE_POINT,
+            Diligent::FILTER_TYPE_POINT,
+            Diligent::TEXTURE_ADDRESS_CLAMP,
+            Diligent::TEXTURE_ADDRESS_CLAMP,
+            Diligent::TEXTURE_ADDRESS_CLAMP,
+        };
+        Diligent::ImmutableSamplerDesc immutable_sampler_description{
+            Diligent::SHADER_TYPE_PIXEL,
+            texture_uniform.data(),
+            sampler_description,
+        };
 
         auto& resource_layout = graphics_pipeline_ci.PSODesc.ResourceLayout;
-        resource_layout.Variables = shader_variable_descriptions.data();
-        resource_layout.NumVariables = static_cast<uint32_t>(shader_variable_descriptions.size());
+        resource_layout.Variables = &resource_variable_description;
+        resource_layout.NumVariables = 1;
 
-        resource_layout.ImmutableSamplers = immutable_sampler_descriptions.data();
-        resource_layout.NumImmutableSamplers = static_cast<uint32_t>(immutable_sampler_descriptions.size());
+        resource_layout.ImmutableSamplers = &immutable_sampler_description;
+        resource_layout.NumImmutableSamplers = 1;
 
         render_device->CreateGraphicsPipelineState(graphics_pipeline_ci, &pipeline_state);
 
-        {
-            const auto constants = pipeline_state->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "Constants");
-            if (constants) {
-                constants->Set(constants_buffer);
-            }
-        }
-        {
-            const auto constants = pipeline_state->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "Constants");
-            if (constants) {
-                constants->Set(constants_buffer);
-            }
+        const auto constants = pipeline_state->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "constants");
+        if (constants) {
+            constants->Set(constants_buffer);
         }
 
         pipeline_state->CreateShaderResourceBinding(&shader_resource_binding, true);
     }
 
     void render(
-        const Diligent::RefCntAutoPtr<Diligent::IDeviceContext>& immediate_context,
-        Diligent::ITextureView* const render_target
+        Diligent::RefCntAutoPtr<Diligent::IDeviceContext>& immediate_context,
+        Diligent::ITextureView* input_texture,
+        Diligent::ITextureView* render_target
     ) {
 
+        {
+            Diligent::MapHelper<Constants> map_helper(
+                immediate_context,
+                constants_buffer,
+                Diligent::MAP_WRITE,
+                Diligent::MAP_FLAG_DISCARD
+            );
+//            map_helper->color = {0.5, 0.5, 1.0, 1.0};
+            auto tmp = Diligent::float4{1.0f} / size;
+            map_helper->reversed_size = {tmp.x, tmp.y};
+            map_helper->blur_radius = 5;
+            map_helper->sigma = 10.0;
+        }
+
+        {
+            Diligent::MapHelper<std::array<Vertex, 4>> map_helper(
+                immediate_context,
+                vertex_buffer,
+                Diligent::MAP_WRITE,
+                Diligent::MAP_FLAG_DISCARD
+            );
+            *map_helper = vertices;
+        }
+
+        {
+            Diligent::MapHelper<std::array<uint32_t, 6>> map_helper(
+                immediate_context,
+                index_buffer,
+                Diligent::MAP_WRITE,
+                Diligent::MAP_FLAG_DISCARD
+            );
+            *map_helper = indices;
+        }
+
+        immediate_context->SetRenderTargets(1, &render_target, nullptr,
+                                            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        immediate_context->SetPipelineState(pipeline_state);
+
+        Diligent::IBuffer* buffers[] = {vertex_buffer};
+        Diligent::Uint64 offset = 0;
+        immediate_context->SetVertexBuffers(
+            0,
+            1,
+            buffers,
+            &offset,
+            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+            Diligent::SET_VERTEX_BUFFERS_FLAG_RESET
+        );
+        immediate_context->SetIndexBuffer(index_buffer, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        const auto var = shader_resource_binding->GetVariableByName(
+            Diligent::SHADER_TYPE_PIXEL,
+            texture_uniform.data()
+        );
+        if (var) {
+            var->Set(input_texture);
+        }
+
+        immediate_context->CommitShaderResources(
+            shader_resource_binding,
+            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
+        );
+
+        Diligent::DrawIndexedAttribs draw_indexed_attribs{};
+        draw_indexed_attribs.IndexType = Diligent::VT_UINT32;
+        draw_indexed_attribs.NumIndices = static_cast<uint32_t>(indices.size());
+        draw_indexed_attribs.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
+        immediate_context->DrawIndexed(draw_indexed_attribs);
     }
 
 private:
@@ -190,8 +277,6 @@ private:
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> pipeline_state{};
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> shader_resource_binding{};
 };
-
-//auto create_texture(Diligent::RefCntAutoPtr<Diligent::IRenderDevice> render_device, )
 
 auto load_texture(Diligent::RefCntAutoPtr<Diligent::IRenderDevice>& render_device) {
     Diligent::RefCntAutoPtr<Diligent::ITexture> texture{};
@@ -222,10 +307,6 @@ auto load_texture(Diligent::RefCntAutoPtr<Diligent::IRenderDevice>& render_devic
 
     stbi_image_free(data);
 
-//    internal->texture_view = texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-
-//    size = size_;
-
     return texture;
 }
 
@@ -242,8 +323,8 @@ void save_image(
     {
         Diligent::TextureDesc texture_description{};
         texture_description.Type = Diligent::RESOURCE_DIM_TEX_2D;
-        texture_description.Width = description.Width;
-        texture_description.Height = description.Height;
+        texture_description.Width = description.GetWidth();
+        texture_description.Height = description.GetHeight();
         texture_description.MipLevels = 1;
         texture_description.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
         texture_description.Usage = Diligent::USAGE_STAGING;
@@ -260,6 +341,7 @@ void save_image(
         staging_texture,
         Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
     };
+    immediate_context->SetRenderTargets(0, nullptr, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_NONE);
     immediate_context->CopyTexture(copy_attributes);
     immediate_context->EnqueueSignal(fence, 1);
     immediate_context->Flush();
@@ -272,7 +354,8 @@ void save_image(
     const auto start = std::chrono::high_resolution_clock::now();
     fence->Wait(1);
     const auto end = std::chrono::high_resolution_clock::now();
-    std::cerr << "Wait time is: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << std::endl;
+    std::cerr << "Wait time is: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+              << std::endl;
     std::cerr << "Fence value after Wait is: " << fence->GetCompletedValue() << std::endl;
 
     Diligent::MappedTextureSubresource texture_subresource{};
@@ -286,15 +369,15 @@ void save_image(
         texture_subresource
     );
 
-    if (texture_subresource.Stride != description.Width * 4) {
+    if (texture_subresource.Stride != description.GetWidth() * 4) {
         std::cerr << "Stride value must be w * 4" << std::endl;
         std::exit(1);
     }
 
     stbi_write_jpg(
         "output.jpg",
-        static_cast<int32_t>(description.Width),
-        static_cast<int32_t>(description.Height),
+        static_cast<int32_t>(description.GetWidth()),
+        static_cast<int32_t>(description.GetHeight()),
         4,
         texture_subresource.pData,
         100
@@ -310,6 +393,8 @@ int main() {
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediate_context{};
     Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> shader_source_stream_factory{};
 
+//    Diligent::SetDebugMessageCallback(nullptr);
+
     Diligent::EngineVkCreateInfo engine_ci{};
     engine_factory->CreateDeviceAndContextsVk(engine_ci, &render_device, &immediate_context);
     if (!render_device || !immediate_context) {
@@ -317,19 +402,42 @@ int main() {
         return 1;
     }
 
-    engine_factory->CreateDefaultShaderSourceStreamFactory(nullptr, &shader_source_stream_factory);
+    engine_factory->CreateDefaultShaderSourceStreamFactory(".", &shader_source_stream_factory);
     if (!shader_source_stream_factory) {
         std::cerr << "Failed to CreateDefaultShaderSourceStreamFactory" << std::endl;
         return 1;
     }
 
     auto texture = load_texture(render_device);
-    save_image(texture, immediate_context, render_device);
 
-    Diligent::IFence* x;
-//    x->Wait()
-//immediate_context->EnqueueSignal()
+    Diligent::RefCntAutoPtr<Diligent::ITexture> render_target_texture{};
+    {
+        const auto& description = texture->GetDesc();
+
+        Diligent::TextureDesc texture_description{};
+        texture_description.Type = Diligent::RESOURCE_DIM_TEX_2D;
+        texture_description.Width = description.GetWidth();
+        texture_description.Height = description.GetHeight();
+        texture_description.MipLevels = 1;
+        texture_description.BindFlags = Diligent::BIND_RENDER_TARGET;
+        texture_description.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
+        texture_description.Usage = Diligent::USAGE_DEFAULT;
+        texture_description.CPUAccessFlags = Diligent::CPU_ACCESS_NONE;
+        render_device->CreateTexture(texture_description, nullptr, &render_target_texture);
+    }
+
+    Render_Pass render_pass{render_device, shader_source_stream_factory, Diligent::TEX_FORMAT_RGBA8_UNORM};
+    render_pass.size = {float(texture->GetDesc().GetWidth()), float(texture->GetDesc().GetHeight()), 1.0f, 1.0f};
+//    render_pass.size = {float(texture->GetDesc().GetWidth()), float(texture->GetDesc().GetHeight())};
+    render_pass.render(
+        immediate_context,
+        texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE),
+        render_target_texture->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET)
+    );
+
+    save_image(render_target_texture, immediate_context, render_device);
 
     immediate_context->Flush();
+    immediate_context->WaitForIdle();
     return 0;
 }
