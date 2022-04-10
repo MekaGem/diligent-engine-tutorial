@@ -34,7 +34,7 @@ void main() {
     for (int x = -blur_radius; x <= blur_radius; ++x) {
         for (int y = -blur_radius; y <= blur_radius; ++y) {
             float cf = exp(-(x * x + y * y) / v) / (pi * v);
-            out_color += texture(input_texture, uv + vec2(x, y) * reversed_size.xy) * cf;
+            out_color += texture(input_texture, uv + vec2(x, y) * reversed_size) * cf;
             sum += cf;
         }
     }
