@@ -1,4 +1,4 @@
-# Diligent Engine Vulkan tutorial
+# Diligent Engine Vulkan Tutorial
 This repo contains a very short but complete example about how you can use the 
 [Diligent Engine](https://github.com/DiligentGraphics/DiligentEngine) library to blur an image using a headless
 `Vulkan` renderer. The project uses [Conan](https://conan.io/) package manager and `CMake` and should be highly 
@@ -7,7 +7,7 @@ reproducible. You will need a relatively modern compiler supporting C++20 as I u
 to lower this requirement.
 
 Motivation
---------------
+---
 There are at least a handful of different `Vulkan` tutorials out there, including 
 [Vulkan Tutorial](https://vulkan-tutorial.com/), 
 [Sascha Willems Vulkan](https://github.com/SaschaWillems/Vulkan),
@@ -19,11 +19,27 @@ viewed (not without reason) as **advanced** compared to `OpenGL` for example, an
 them learn `OpenGL` instead. And while `OpenGL` looks much simpler on the surface, if you start asking questions like
 **why?** or **how?** this particular `glReadPixels` function works on a deeper level, then you face a much more severe 
 problem - opaqueness. And to solve this problem you need to play around with the API, read the docs, stackoverflow, etc. 
-regardless of the API you have chosen. 
+regardless of the API you have chosen.
 
 But! I will not cover such detailed deep dive here in this tutorial because I'm not an expert and this is not my goal.
 My goal here is to give a very simple and extensible example of how to implement a headless `Vulkan` renderer without
 writing 1000+ lines of code and to leave some room for changes and experimentation if you want to. And here is where a
 brilliant graphics abstraction layer `Diligent Engine` comes into play.
 
-## Prerequisites
+Building
+---
+To build this tutorial you will need:
+* Windows, macOS or Linux(???)
+* C++20 compiler
+* `Python` >= 3.5
+* `CMake` >= 3.15
+* `Conan` >= 1.33
+
+If you don't have `Python` you can install it from the [official website](https://www.python.org/downloads/) or any other 
+way you may prefer. The same goes for `CMake` - [official website](https://cmake.org/download/).
+
+To install `Conan` with `Python` >= 3.5 you can simply get it via the `pip` by running `pip install conan` or instead
+following the [official documentation](https://docs.conan.io/en/latest/installation.html) to use some other method.  
+**You can also specify the location where the `.conan` caches directory will be created by setting environment variable
+`CONAN_USER_HOME` see [reference](https://docs.conan.io/en/latest/reference/env_vars.html#conan-user-home). 
+This may be useful if you have another `.conan` cache and don't want to interfere with it.**
