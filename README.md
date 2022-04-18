@@ -11,7 +11,7 @@ Motivation
 There are at least a handful of different `Vulkan` tutorials out there, including 
 [Vulkan Tutorial](https://vulkan-tutorial.com/), 
 [Sascha Willems Vulkan](https://github.com/SaschaWillems/Vulkan),
-[LunarG Tuturial](https://vulkan.lunarg.com/doc/view/1.2.154.1/windows/tutorial/html/index.html)
+[LunarG Tutorial](https://vulkan.lunarg.com/doc/view/1.2.154.1/windows/tutorial/html/index.html)
 and of course official [documentation and samples](https://www.vulkan.org/learn). These are definitely very good 
 resources to learn about `Vulkan` and modern GPUs pipeline in general, but this is a lot to read and digest especially
 if you haven't touched any GPU APIs before. Modern GPU APIs like `Vulkan`, `DirectX 12`, `Metal` and `WebGPU` are often 
@@ -29,7 +29,7 @@ brilliant graphics abstraction layer `Diligent Engine` comes into play.
 Building
 ---
 To build this tutorial you will need:
-* Windows, macOS or Linux(???)
+* Windows, macOS or Linux
 * C++20 compiler
 * `Python` >= 3.5
 * `CMake` >= 3.15
@@ -43,3 +43,26 @@ following the [official documentation](https://docs.conan.io/en/latest/installat
 **You can also specify the location where the `.conan` caches directory will be created by setting environment variable
 `CONAN_USER_HOME` see [reference](https://docs.conan.io/en/latest/reference/env_vars.html#conan-user-home). 
 This may be useful if you have another `.conan` cache and don't want to interfere with it.**
+
+Now you can download this repo either by using git
+```
+git clone https://github.com/MekaGem/diligent-engine-tutorial.git
+```
+or simply by downloading the [repo archive](https://github.com/MekaGem/diligent-engine-tutorial/archive/refs/heads/main.zip).
+
+To build the tutorial itself you need to run the following right inside the repo directory:
+* On Windows and if you prefer `Visual Studio` `CMake` generator (usually the default option)
+```
+conan install . --build=missing -if build 
+cmake -S . -B build
+cmake --build build --config Release
+```
+* On macOS and Linux using something like `make` or `ninja`
+```
+conan install . --build=missing -if build 
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+And finally, you can now run the application at `build\bin\blur.exe`(Windows) `build/bin/blur`(macOS/Linux) and check 
+that it works!
