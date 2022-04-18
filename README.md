@@ -158,7 +158,7 @@ struct Image {
 };
 ```
 
-And the `BlurFilterApplication` will look like this
+And the public part of the `BlurFilterApplication` will look like this
 ```cpp
 class BlurFilterApplication {
 public:
@@ -175,3 +175,61 @@ public:
     }
 };
 ```
+
+As for the error handling, let's use a classic `std::abort` wrapped in this little function
+```cpp
+void ERROR(std::string_view message) {
+    std::cerr << message << std::endl;
+    std::abort();
+}
+```
+so we can easily handle any error we want later in this tutorial. Now let's move on to the implementation of the `Image` 
+and `BlurFilterApplication`.
+
+### Load/Save JPEG
+
+First, let's deal with the simplest part - loading and saving images.
+Thanks to the awesome suite of [STB](https://github.com/nothings/stb)
+single-header libraries and its availability in Conan, we can literally implement the `Image` in about 20 lines 
+of code. Again to keep things simple we assume here, that we always work with JPEG and always convert image to a
+4-channel RGBA image practically setting alpha channel to 255 (completely opaque).
+
+To use single-header `stb_image` and `stb_image_write` we need to add their implementation exactly once by defining
+`STB_IMAGE_IMPLEMENTATION` and `STB_IMAGE_WRITE_IMPLEMENTATION` respectively before including the headers in one the 
+source files like this:
+
+```cpp
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+
+#include <stb_image.h>
+#include <stb_image_write.h>
+```
+
+Saving to a file is basically just forwarding the data to the `stbi_write_jpg` function. The only interesting argument 
+here is **100** which is the "quality" (size vs image quality tradeoff) parameter and its value must be between 1 and 100.
+
+Loading is a bit more complicated than saving. First, we load the image data, saying that we want the result to have
+exactly **4** channels. If you want to get the image as-is, then ignore the last argument and provide a pointer to an `int` 
+where the actual number of channels will be stored. Second, copy the data to the `Image::pixels`. Third, free
+the internal buffer.
+
+```cpp
+void load_from_file(std::string_view path) {
+    auto data = stbi_load(path.data(), &width, &height, nullptr, 4);
+    if (!data) {
+        ERROR("Failed to load image");
+    }
+    pixels.resize(width * height * 4);
+    std::memcpy(pixels.data(), data, width * height * 4);
+    stbi_image_free(data);
+}
+
+void save_to_file(std::string_view path) {
+    stbi_write_jpg(path.data(), width, height, 4, pixels.data(), 100);
+}
+```
+
+That's it. Now we can load `fox.jpg` and save `output.jpg`.
+
+### Rendering Blur Filter
