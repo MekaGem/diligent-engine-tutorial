@@ -68,3 +68,110 @@ cmake --build build
 
 And finally, you can now run the application at `build\bin\blur.exe` (Windows) or `build/bin/blur` (macOS/Linux) and 
 check that it works!
+
+Let's start!
+---
+
+### Project Configuration
+
+I already mentioned that in this tutorial we are going to use Diligent Engine, but more specifically we are going to
+use two Conan dependencies `diligent-core` and `stb` for loading and saving JPEGs. 
+So here is the contents of the `conanfile.txt`:
+```
+[requires]
+diligent-core/2.5.1
+stb/cci.20210910
+
+[generators]
+cmake
+```
+The versions of the libraries refer to the ones in the default conan index https://conan.io/center/ and the generators'
+section determines how these libraries can be consumed later, in this case by CMake.
+
+The `CMakeLists.txt` is also quite simple. It specifies minimum required CMake version
+```
+cmake_minimum_required(VERSION 3.15)
+```
+name of the project
+```
+project(diligent_engine_tutorial)
+```
+C++ standard version
+```
+set(CMAKE_CXX_STANDARD 20)
+```
+initializes conan build
+```
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup()
+```
+and finally adds an executable and link **all** the Conan libraries to it
+```
+add_executable(blur main.cpp)
+target_link_libraries(blur PRIVATE ${CONAN_LIBS})
+target_include_directories(blur PRIVATE ${CONAN_INCLUDE_DIRS})
+```
+This approach is not very elegant and if you need to have a more fine-grained control over how dependencies are used,
+then you may want to explicitly provide configuration with the
+[Targets approach](https://docs.conan.io/en/latest/integrations/build_system/cmake/cmake_generator.html#targets-approach)
+for example. But this works, and it's simple and good enough for our use case.
+
+That's basically all we need! After running the `conan install` command from above all necessary files for all
+the dependencies will be downloaded and built if prebuilt version is missing. And CMake will automagically just have all
+these dependencies packed in the `CONAN_LIBS` and `CONAN_INCLUDE_DIRS` variables.
+
+### Application Structure
+
+I like the main function to be as short as reasonably needed, so it should create some application, load image, apply
+blur onto it and save the result as an image as well.
+```cpp
+int main() {
+    BlurFilterApplication blurFilterApplication{};
+
+    Image image{};
+    image.load_from_file("fox.jpg");
+
+    auto result = blurFilterApplication.apply(image);
+    result.save_to_file("output.jpg");
+
+    return 0;
+}
+```
+The cute little fox picture is taken from https://unsplash.com/photos/HQqIOc8oYro and saved as a `fox.jpg` right inside 
+the repo for convenience. Should you wish to add some arguments parsing or support different image formats, it's 
+completely up to you! But for now it's `fox.jpg` as an input and `output.jpg` as an output.
+
+So, as a storage for our images we will stick to a simple `Image` struct with two methods `load_from_file` and `save_to_file`
+```cpp
+struct Image {
+    int32_t width{};
+    int32_t height{};
+    std::vector<uint8_t> pixels{};
+
+    void load_from_file(std::string_view path) {
+        // ...
+    }
+
+    void save_to_file(std::string_view path) {
+        // ...
+    }
+};
+```
+
+And the `BlurFilterApplication` will look like this
+```cpp
+class BlurFilterApplication {
+public:
+    BlurFilterApplication() {
+        // ...
+    }
+
+    ~BlurFilterApplication() {
+        // ...
+    }
+
+    Image apply(const Image& image) {
+        // ...
+    }
+};
+```
