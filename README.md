@@ -8,23 +8,23 @@ to lower this requirement.
 
 Motivation
 ---
-There are at least a handful of different `Vulkan` tutorials out there, including 
+For many years the default cross-platform way to start learning "how to make your GPU render a triangle" was to use
+OpenGL for desktop and OpenGL ES for mobile devices. 
+And of course, it's still a very good starting point especially considering how many modern GPU features are supported
+in newer versions of OpenGL and the enormous number of resources to help you along the way.
+But it's not that cross-platform anymore as Apple deprecated OpenGL across all OSes in 2018, and it's also really painful
+to debug and run as a headless renderer.
+So, the point of this tutorial is to show how easy it's to make your own application that renders something not super 
+trivial using Vulkan (without writing 1000+ lines of code) with the help of the Diligent Engine library which gracefully handles all the defaults letting the
+user decide whether they want to go deeper.
+To spice things up and to make this example more versatile I've also added image loading/saving.
+You will see how easy it is with Conan.
+
+If you want to learn more about `Vulkan` there are plenty of resources out there, including 
 [Vulkan Tutorial](https://vulkan-tutorial.com/), 
 [Sascha Willems Vulkan](https://github.com/SaschaWillems/Vulkan),
 [LunarG Tutorial](https://vulkan.lunarg.com/doc/view/1.2.154.1/windows/tutorial/html/index.html)
-and of course official [documentation and samples](https://www.vulkan.org/learn). These are definitely very good 
-resources to learn about Vulkan and modern GPUs pipeline in general, but this is a lot to read and digest especially
-if you haven't touched any GPU APIs before. Modern GPU APIs like `Vulkan`, `DirectX 12`, `Metal` and `WebGPU` are often 
-viewed (not without reason) as **advanced** compared to OpenGL for example, and this immediately repels many, making 
-them learn `OpenGL` instead. And while OpenGL looks much simpler on the surface, if you start asking questions like
-**why?** or **how?** this particular `glReadPixels` function works on a deeper level, then you face a much more severe 
-problem - opaqueness. And to solve this problem you need to play around with the API, read the docs, stackoverflow, etc. 
-regardless of the API you have chosen.
-
-But! I will not cover such detailed deep dive here in this tutorial because I'm not an expert and this is not my goal.
-My goal here is to give a very simple and extensible example of how to implement a headless Vulkan renderer without
-writing 1000+ lines of code and to leave some room for changes and experimentation if you want to. And here is where a
-brilliant graphics abstraction layer `Diligent Engine` comes into play.
+and of course official [documentation and samples](https://www.vulkan.org/learn).
 
 Building
 ---
@@ -233,3 +233,11 @@ void save_to_file(std::string_view path) {
 That's it. Now we can load `fox.jpg` and save `output.jpg`.
 
 ### Rendering Blur Filter
+
+Diligent Engine is a "Modern GPU API Abstraction Layer", meaning it's designed to emphasise modern approach to graphics
+programming while still finding the commonalities between Vulkan, Direct3D 12 and Metal, and it also supports OpenGL and 
+Direct3D 11 to a certain extent. Moreover, Direct3D is considered to be the first class citizen in the Diligent Engine 
+world.
+You can basically write a single HLSL shader and cross-compile it to all supported platforms.
+But we will not use this feature and will use only Vulkan and GLSL to SPIR-V builtin compiler 
+[glslang](https://github.com/KhronosGroup/glslang).
