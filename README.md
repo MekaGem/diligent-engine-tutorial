@@ -8,17 +8,20 @@ to lower this requirement.
 
 Motivation
 ---
-For many years the default cross-platform way to start learning "how to make your GPU render a triangle" was to use
+For many years the default cross-platform way to start learning **"how to make your GPU render a triangle"** was to use
 OpenGL for desktop and OpenGL ES for mobile devices. 
-And of course, it's still a very good starting point especially considering how many modern GPU features are supported
+It's still a very good starting point especially considering how many modern GPU features are supported
 in newer versions of OpenGL and the enormous number of resources to help you along the way.
-But it's not that cross-platform anymore as Apple deprecated OpenGL across all OSes in 2018, and it's also really painful
+But, it's not that cross-platform anymore as Apple deprecated OpenGL across all OSes in 2018, and it's also really painful
 to debug and run as a headless renderer.
 So, the point of this tutorial is to show how easy it's to make your own application that renders something not super 
 trivial using Vulkan (without writing 1000+ lines of code) with the help of the Diligent Engine library which gracefully handles all the defaults letting the
 user decide whether they want to go deeper.
 To spice things up and to make this example more versatile I've also added image loading/saving.
 You will see how easy it is with Conan.
+
+And of course, even though I've tried my best to make the code as clean as possible, I'm assuming that the reader of 
+this tutorial has at least an average knowledge of C++.
 
 If you want to learn more about `Vulkan` there are plenty of resources out there, including 
 [Vulkan Tutorial](https://vulkan-tutorial.com/), 
@@ -41,10 +44,12 @@ way you may prefer.
 The same goes for CMake - [official website](https://cmake.org/download/).
 
 To install Conan with Python >= 3.5 you can simply get it via the `pip` by running `pip install conan` or instead
-following the [official documentation](https://docs.conan.io/en/latest/installation.html) to use some other method.  
-**You can also specify the location where the `.conan` caches directory will be created by setting environment variable
+following the [official documentation](https://docs.conan.io/en/latest/installation.html) to use some other method.
+
+**_By default, Conan will create `.conan` cache directory in your user's home directory.
+You can also specify the location where the `.conan` cache directory will be created by setting the environment variable
 `CONAN_USER_HOME` see [reference](https://docs.conan.io/en/latest/reference/env_vars.html#conan-user-home). 
-This may be useful if you have another `.conan` cache and don't want to interfere with it.**
+This may be useful if you want to avoid any conflicts with existing cache._**
 
 Now you can download this repo either by using git
 ```
