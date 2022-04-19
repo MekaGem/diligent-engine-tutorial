@@ -302,3 +302,91 @@ everything for you. But there is one thing to do manually, and it's flushing the
 }
 ```
 This way the application will not crash while destroying the Immediate DeviceContext.
+
+All three objects we've just created are stored as private members:
+```cpp
+Diligent::RefCntAutoPtr<Diligent::IRenderDevice> render_device{};
+Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediate_context{};
+Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> shader_source_stream_factory{};
+```
+
+Let's get back to the `create_buffers` and `create_pipeline` functions.
+The `create_buffers` is quite straight forward, we will need three buffers: `Constants` to store global data passed to
+the shader, `Vertex` to store vertex coordinates, and `Index` to store vertex indices. What shader is and why it needs
+these three buffers will be explained better when we start creating the pipeline. Here is the code:
+```cpp
+void create_buffers() {
+    // Create Constants Buffers
+    {
+        Diligent::BufferDesc constants_buffer_description{};
+        constants_buffer_description.Name = "Constants Buffer";
+        constants_buffer_description.Size = sizeof(Constants);
+        constants_buffer_description.BindFlags = Diligent::BIND_UNIFORM_BUFFER;
+        constants_buffer_description.Usage = Diligent::USAGE_DYNAMIC;
+        constants_buffer_description.CPUAccessFlags = Diligent::CPU_ACCESS_WRITE;
+        render_device->CreateBuffer(constants_buffer_description, nullptr, &constants_buffer);
+    }
+
+    // Create Vertex Buffer
+    {
+        Diligent::BufferDesc vertex_buffer_description{};
+        vertex_buffer_description.Name = "Vertex Buffer";
+        vertex_buffer_description.Size = sizeof(Vertex) * vertices.size();
+        vertex_buffer_description.BindFlags = Diligent::BIND_VERTEX_BUFFER;
+        vertex_buffer_description.Usage = Diligent::USAGE_DYNAMIC;
+        vertex_buffer_description.CPUAccessFlags = Diligent::CPU_ACCESS_WRITE;
+        render_device->CreateBuffer(vertex_buffer_description, nullptr, &vertex_buffer);
+    }
+
+    // Create Index Buffer
+    {
+        Diligent::BufferDesc index_buffer_description{};
+        index_buffer_description.Name = "Index Buffer";
+        index_buffer_description.Size = sizeof(uint32_t) * indices.size();
+        index_buffer_description.BindFlags = Diligent::BIND_INDEX_BUFFER;
+        index_buffer_description.Usage = Diligent::USAGE_DYNAMIC;
+        index_buffer_description.CPUAccessFlags = Diligent::CPU_ACCESS_WRITE;
+        render_device->CreateBuffer(index_buffer_description, nullptr, &index_buffer);
+    }
+}
+```
+As you can see, the code for each of them is quite similar.
+The `Name` is used for debug purposes.
+`Size` is equal to the number of bytes we want this buffer to store.
+`BindFlags` means the point where this data will be used in the rendering pipeline, or in other words the purpose of the
+data.
+`Usage` is Dynamic because we are going to update all the buffers every time we need to use the pipeline.
+And finally, the `CPUAccessFlags` is Write because again we are going to fill this memory by CPU and the driver must 
+know it has to allow us to do so.
+The `nullptr` is provided instead of `BufferData` because we are not going to fill the memory right now.
+And, as mentioned above, buffers are created using `RenderDevice` and all three are also stored
+as private member fields:
+```cpp
+Diligent::RefCntAutoPtr<Diligent::IBuffer> constants_buffer{};
+Diligent::RefCntAutoPtr<Diligent::IBuffer> vertex_buffer{};
+Diligent::RefCntAutoPtr<Diligent::IBuffer> index_buffer{};
+```
+The last bit left is what are the `Constants`, `vertices` and `indices`?
+Here is the code for them as well:
+```cpp
+struct Constants {
+    Diligent::float2 reversed_size{};
+    int32_t blur_radius{};
+    float sigma{};
+};
+struct Vertex {
+    Diligent::float2 xy{};
+    Diligent::float2 uv{};
+};
+static constexpr std::array<Vertex, 4> vertices = {
+    Vertex{.xy = {-1.0f, -1.0f}, .uv = {0.0f, 1.0f}},
+    Vertex{.xy = {+1.0f, -1.0f}, .uv = {1.0f, 1.0f}},
+    Vertex{.xy = {+1.0f, +1.0f}, .uv = {1.0f, 0.0f}},
+    Vertex{.xy = {-1.0f, +1.0f}, .uv = {0.0f, 0.0f}},
+};
+static constexpr std::array<uint32_t, 6> indices = {
+    0, 1, 2,
+    2, 3, 0,
+};
+```
+The alignment of the data and what `xy`, `uv` and the others mean will be explained soon.
