@@ -237,7 +237,7 @@ void save_to_file(std::string_view path) {
 
 That's it. Now we can load `fox.jpg` and save `output.jpg`.
 
-### Rendering Blur Filter
+### Engine Initialization
 
 Diligent Engine is a "Modern GPU API Abstraction Layer", meaning it's designed to emphasise modern approach to graphics
 programming while still finding the commonalities between Vulkan, Direct3D 12 and Metal, and it also supports OpenGL and 
@@ -246,3 +246,59 @@ world.
 You can basically write a single HLSL shader and cross-compile it to all supported platforms.
 But we will not use this feature and will use only Vulkan and GLSL to SPIR-V builtin compiler 
 [glslang](https://github.com/KhronosGroup/glslang).
+
+Now, let's proceed to initializing our Application.
+```cpp
+BlurFilterApplication() {
+#if NDEBUG
+    Diligent::SetDebugMessageCallback(nullptr);
+#endif
+
+    const auto engine_factory = Diligent::GetEngineFactoryVk();
+
+    Diligent::EngineVkCreateInfo engine_ci{};
+    engine_factory->CreateDeviceAndContextsVk(engine_ci, &render_device, &immediate_context);
+    if (!render_device || !immediate_context) {
+        ERROR("Failed to create RenderDevice and Immediate DeviceContext");
+    }
+
+    engine_factory->CreateDefaultShaderSourceStreamFactory(nullptr, &shader_source_stream_factory);
+    if (!shader_source_stream_factory) {
+        ERROR("Failed to create ShaderSourceStreamFactory");
+    }
+
+    create_buffers();
+    create_pipeline();
+}
+```
+First, we are going to disable all debug messages in Release build. If you want to manually control how logs are processed
+then provide an appropriate callback function, otherwise passing `nullptr` will simply mute them.
+
+Next, we need to create an Engine Factory.
+This is the first time we specify something related to Vulkan.
+This `Diligent::GetEngineFactoryVk` function is for a static linkage, there is also another way to retrieve 
+engine factory if `diligent-core` is linked dynamically.
+
+Then we need to create three core objects: `RenderDevice`, Immediate `DeviceContext` and a `ShaderSourceStreamFactory`.
+* `RenderDevice` - is used for creating textures, buffers, shaders and pipeline states
+* `DeviceContext` - is used for configuring current rendering state: e.g. setting frame buffers or transitioning resources
+* `ShaderSourceStreamFactory` - is used for loading shaders from files.
+
+There is no need to alter the `Diligent::EngineVkCreateInfo` config, the default values are just fine. By default, the
+engine factory will try to create one RenderDevice and one Immediate DeviceContext which is right what we need for our
+application. Having more than one DeviceContext may allow the user to push commands in parallel utilizing multiple
+processing queues on your GPU, but for now let's do everything **Immediately**.
+
+The first argument of `CreateDefaultShaderSourceStreamFactory` is a list of paths, where to look for shader files, but
+the current working directory is included by default.
+
+And the last two lines are `create_buffers();` and `create_pipeline();`. We will cover them later.
+
+All the objects in Diligent Engine are self-managed smart pointers, so you can rely on the default destructor to release
+everything for you. But there is one thing to do manually, and it's flushing the command buffer.
+```cpp
+~BlurFilterApplication() {
+    immediate_context->Flush();
+}
+```
+This way the application will not crash while destroying the Immediate DeviceContext.
