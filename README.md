@@ -311,9 +311,10 @@ Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> shader_source
 ```
 
 Let's get back to the `create_buffers` and `create_pipeline` functions.
-The `create_buffers` is quite straight forward, we will need three buffers: `Constants` to store global data passed to
-the shader, `Vertex` to store vertex coordinates, and `Index` to store vertex indices. What shader is and why it needs
-these three buffers will be explained better when we start creating the pipeline. Here is the code:
+The `create_buffers` is straightforward, it creates three buffers: `Constants` to store global data passed to
+the shader, `Vertex` to store vertex coordinates, and `Index` to store vertex position and texture indices.
+What shader is and why it needs these three buffers will be explained better when we start creating the pipeline.
+Here is the code:
 ```cpp
 void create_buffers() {
     // Create Constants Buffers
@@ -389,4 +390,48 @@ static constexpr std::array<uint32_t, 6> indices = {
     2, 3, 0,
 };
 ```
-The alignment of the data and what `xy`, `uv` and the others mean will be explained soon.
+The alignment of the vertices and indices is the following: each vertex has a two-component screen position `x,y` and a
+two-component texture position `u,v`.
+
+In Vulkan the coordinate system of the screen is `[-1, +1]` for both `x` and `y`, where the top-left corner is `-1,-1`
+and the bottom-right is `+1,+1`.
+
+For textures the coordinate system is `[0, 1]` for both `u` and `v`, where the top-left point is `0,0`
+and the bottom-right is `1,1`.
+
+You may notice that the vertices array invert the y-axis between position and texture coordinates, e.g. `xy = -1,-1` and
+`uv = 0,1`, but should have been `0,0` instead.
+This is because Diligent Engine tries to unify things across multiple APIs.
+In Direct3D the screen coordinate system is left-handed and in Vulkan it's right-handed.
+And to fix this a Vulkan extension `VK_KHR_MAINTENANCE1` was introduced, see
+https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/.
+This very extension was
+[used](https://github.com/DiligentGraphics/DiligentCore/commit/4ec57381190d632e56d4b56b2a0f1ec7d80d1446)
+in the Diligent Engine as well.
+As a result the screen coordinate system is y-flipped and texture coordinates must be changed accordingly.
+
+The indices array is just two triplets of vertex indices, each triplet specifies a triangle, so in this case it is:
+* `(-1,-1), (+1,-1), (+1,+1)` - first triangle
+* `(+1,+1), (-1,+1), (-1,-1)` - second triangle
+
+The `Constants` buffer stores data needed for our blur implementation: radius, sigma and reversed size of the 
+viewport. This buffer is just a sequence of bytes, but the alignment is important for it. This buffer will be used
+the shader with the `std140` memory layout. This layout is strictly defined 
+[in the glsl specification](https://www.khronos.org/registry/OpenGL/specs/gl/glspec45.core.pdf#page=159)
+and that will help us translate bytes to bytes directly.
+We will use two rules out of this spec: 32-bit integers and floats have 32-bit alignment, vec2 or vector of two 32-bit
+floats has 64-bit alignment. So, in other words this 128 bits of Constants data will be mapped directly to a uniform
+struct in the shader.
+```glsl
+layout(std140) uniform constants
+{
+    vec2 reversed_size;
+    int blur_radius;
+    float sigma;
+};
+```
+This `std140` memory layout has its drawbacks, for example arrays of floats are aligned by 128 bits
+for each float in array, and unfortunately in Vulkan this is the only reliable memory layout that allows direct
+mapping into the uniform buffer struct. You can also use raw buffers with `std430`
+(see https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL))
+but we won't touch on that in this tutorial.
