@@ -435,3 +435,71 @@ for each float in array, and unfortunately in Vulkan this is the only reliable m
 mapping into the uniform buffer struct. You can also use raw buffers with `std430`
 (see https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL))
 but we won't touch on that in this tutorial.
+
+Ok, now it's time to take a look at the largest method here - `create_pipeline`.
+There is a lot of code here, but it's mostly configuration, thus it's verbose but not particularly difficult.
+First, we need to configure top-level things:
+* The `Name` which is used for debug purposes. Same as for buffers.
+* Pipeline type `GRAPHICS`, because we are going to render triangles. Another popular option is `COMPUTE`.
+* The topology we are going to use `TRIANGLE_LIST`, as mentioned above it expects triplets of indices.
+* How many render targets we are going to use `NumRenderTargets = 1`.
+* The expected render target format `RTVFormats[0]` using a predefined constant:  
+`static constexpr auto texture_format = Diligent::TEX_FORMAT_RGBA8_UNORM;`.
+* Disable face culling and depth testing.
+* And finally, disable blending as we are not going to use it in this tutorial.
+```cpp
+void create_pipeline() {
+    Diligent::GraphicsPipelineStateCreateInfo graphics_pipeline_ci{};
+    graphics_pipeline_ci.PSODesc.Name = "Tutorial Graphics Pipeline";
+    graphics_pipeline_ci.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
+    graphics_pipeline_ci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    graphics_pipeline_ci.GraphicsPipeline.NumRenderTargets = 1;
+    graphics_pipeline_ci.GraphicsPipeline.RTVFormats[0] = texture_format;
+    graphics_pipeline_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
+    graphics_pipeline_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
+    
+    Diligent::RenderTargetBlendDesc blend_description{};
+    blend_description.BlendEnable = false;
+    graphics_pipeline_ci.GraphicsPipeline.BlendDesc.RenderTargets[0] = blend_description
+```
+
+There are so many way ways to configure this `GraphicsPipeline` and I really encourage you to look at the headers and
+documentation to learn what all these options do by yourself.
+This and other common types in Diligent Engine really sheds light on many commonalities and differences between various
+APIs.
+
+After we configured graphics pipeline we need to compile shaders with the help of already created
+`ShaderSourceStreamFactory`.
+Despite the fact, that Direct3D and HLSL shader language are considered to be first-class citizens in this library,
+we are still allowed to use GLSL which will be directly compiled to SPIR-V. The rendering pipeline consists of several
+stages https://en.wikipedia.org/wiki/Graphics_pipeline and only some of them are allowed to alter by the user.
+We are going to provide a classic pair of `vertex` and `pixel` shaders and as the `ShaderSourceStreamFactory` provides
+some default definitions like `VERTEX_SHADER` and `PIXEL_SHADER` we will combine them together in a single file called
+`blur.glsl`.
+```cpp
+    Diligent::ShaderCreateInfo shader_ci{};
+    shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
+    shader_ci.pShaderSourceStreamFactory = shader_source_stream_factory;
+    
+    Diligent::RefCntAutoPtr<Diligent::IShader> vertex_shader{};
+    {
+        shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
+        shader_ci.Desc.Name = "Tutorial Vertex Shader";
+        shader_ci.FilePath = "blur.glsl";
+        render_device->CreateShader(shader_ci, &vertex_shader);
+        if (!vertex_shader) {
+            ERROR("Failed to create vertex shader");
+        }
+    }
+    
+    Diligent::RefCntAutoPtr<Diligent::IShader> pixel_shader{};
+    {
+        shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_PIXEL;
+        shader_ci.Desc.Name = "Tutorial Pixel Shader";
+        shader_ci.FilePath = "blur.glsl";
+        render_device->CreateShader(shader_ci, &pixel_shader);
+        if (!pixel_shader) {
+            ERROR("Failed to create pixel shader");
+        }
+    }
+```
