@@ -446,6 +446,9 @@ First, we need to configure top-level things:
 * The expected render target format `RTVFormats[0]` using a predefined constant:  
 `static constexpr auto texture_format = Diligent::TEX_FORMAT_RGBA8_UNORM;`.
 * Disable face culling and depth testing.
+* Specify that each vertex consists of
+  * 0: 2-component 32-bit float position
+  * 1: 2-component 32-bit float texture coordinates
 * And finally, disable blending as we are not going to use it in this tutorial.
 ```cpp
 void create_pipeline() {
@@ -457,6 +460,13 @@ void create_pipeline() {
     graphics_pipeline_ci.GraphicsPipeline.RTVFormats[0] = texture_format;
     graphics_pipeline_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
     graphics_pipeline_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
+    
+    std::vector<Diligent::LayoutElement> layout_elements = {
+        Diligent::LayoutElement{0, 0, 2, Diligent::VT_FLOAT32}, // position
+        Diligent::LayoutElement{1, 0, 2, Diligent::VT_FLOAT32}, // texture coordinates
+    };
+    graphics_pipeline_ci.GraphicsPipeline.InputLayout.LayoutElements = layout_elements.data();
+    graphics_pipeline_ci.GraphicsPipeline.InputLayout.NumElements = static_cast<uint32_t>(layout_elements.size())
     
     Diligent::RenderTargetBlendDesc blend_description{};
     blend_description.BlendEnable = false;
@@ -480,7 +490,7 @@ some default definitions like `VERTEX_SHADER` and `PIXEL_SHADER` we will combine
     Diligent::ShaderCreateInfo shader_ci{};
     shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
     shader_ci.pShaderSourceStreamFactory = shader_source_stream_factory;
-    
+
     Diligent::RefCntAutoPtr<Diligent::IShader> vertex_shader{};
     {
         shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
@@ -502,4 +512,76 @@ some default definitions like `VERTEX_SHADER` and `PIXEL_SHADER` we will combine
             ERROR("Failed to create pixel shader");
         }
     }
+
+    graphics_pipeline_ci.pVS = vertex_shader;
+    graphics_pipeline_ci.pPS = pixel_shader;
+```
+Now comes the tricky part.
+There are two ways to use a texture in the shader, one is to use a combined texture + sampler, and another is to use
+them separately. We are going to stick to the combined option as it's the same as in OpenGL.
+In the shader the texture resource is specified like this
+```glsl
+uniform sampler2D input_texture;
+```
+and the name `input_texture` will refer to both the static immutable Sampler and the texture uniform.
+Sampler is a description of how a given texture must be sampled to retrieve a pixel for a given coordinate, e.g.
+what interpolation must be used and what happens when the sampling coordinates are outside the `[0, 1]` range.
+So the texture uniform description goes to the `Variable` and the immutable Sampler description goes to
+`ImmutableSamplers`. As we only have one of each we can use pointers to the struct instead of arrays.
+```cpp
+    Diligent::ShaderResourceVariableDesc resource_variable_description{
+        Diligent::SHADER_TYPE_PIXEL,
+        texture_uniform.data(),
+        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC,
+    };
+    Diligent::SamplerDesc sampler_description{
+        Diligent::FILTER_TYPE_POINT,
+        Diligent::FILTER_TYPE_POINT,
+        Diligent::FILTER_TYPE_POINT,
+        Diligent::TEXTURE_ADDRESS_CLAMP,
+        Diligent::TEXTURE_ADDRESS_CLAMP,
+        Diligent::TEXTURE_ADDRESS_CLAMP,
+    };
+    Diligent::ImmutableSamplerDesc immutable_sampler_description{
+        Diligent::SHADER_TYPE_PIXEL,
+        texture_uniform.data(),
+        sampler_description,
+    };
+    auto& resource_layout = graphics_pipeline_ci.PSODesc.ResourceLayout;
+    resource_layout.Variables = &resource_variable_description;
+    resource_layout.NumVariables = 1;
+    resource_layout.ImmutableSamplers = &immutable_sampler_description;
+    resource_layout.NumImmutableSamplers = 1;
+```
+The `SHADER_TYPE_PIXEL` here means the scope where this variable will be used. In our case we only need this
+texture in the pixel shader.
+The `FILTER_TYPE_POINT` and `TEXTURE_ADDRESS_CLAMP` mean that we want the texture to be sampled by the nearest pixel
+to a given position `uv` and that these `uv` coordinates will be clamped by `[0, 1]` before sampling the pixel.
+
+Phew! We are finally done with the description.
+The last step is to create a Pipeline object and also a ShaderResourceBinding object.
+The former is a top-level rendering primitive.
+You can think of it as a standalone executable program that you can run as many times as you want
+if you provide inputs and outputs that match the expectation baked into the configuration.
+The latter is a more mind-bending concept. You can read a nice article about it
+https://developer.nvidia.com/vulkan-shader-resource-binding
+but for us this object is just a way to set non-static variables. Such as the `input_texture` for example!
+On the other hand, static variables, are to be set before creating a `ShaderResourceBinding`.
+In our case we have only two static variables: `constants` and a Sampler for `input_texture`.
+Samplers are initialized based on the `ResourceLayout`. And the `constants` value is still not set.
+We are not asked to provide the data for the `constants` fields here, all we need to do, is to specify the buffer object
+supposed to hold such data. And when the shader starts, it will basically load and map this whole buffer into the global
+`constants` struct. The `true` in the `CreateShaderResourceBinding` asks to initialize all static resources in the
+pipeline state. Without that `constants` uniform will still be unset.
+```cpp
+    render_device->CreateGraphicsPipelineState(graphics_pipeline_ci, &pipeline_state);
+    
+    const auto constants = pipeline_state->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "constants");
+    if (!constants) {
+        ERROR("Failed to find 'constants' variable");
+    }
+    constants->Set(constants_buffer);
+    
+    pipeline_state->CreateShaderResourceBinding(&shader_resource_binding, true);
+}
 ```
