@@ -237,7 +237,7 @@ void save_to_file(std::string_view path) {
 
 That's it. Now we can load `fox.jpg` and save `output.jpg`.
 
-### Engine Initialization
+### Engine and Pipeline Initialization
 
 Diligent Engine is a "Modern GPU API Abstraction Layer", meaning it's designed to emphasise modern approach to graphics
 programming while still finding the commonalities between Vulkan, Direct3D 12 and Metal, and it also supports OpenGL and 
@@ -585,3 +585,96 @@ pipeline state. Without that `constants` uniform will still be unset.
     pipeline_state->CreateShaderResourceBinding(&shader_resource_binding, true);
 }
 ```
+
+### The Shader
+
+But wait, there was a shader called `blur.glsl` that we compiled but then just skipped it altogether.
+Now when we know what data is provided to it, it will be much easier to explain what it actually does. First, let's look
+at the code, here is the vertex shader
+```glsl
+#ifdef VERTEX_SHADER
+layout(location = 0) in vec2 position;
+layout(location = 1) in vec2 tex_coords;
+
+layout(location = 0) out vec2 uv;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    uv = tex_coords;
+}
+#endif
+```
+and here is the pixel shader
+```glsl
+#ifdef PIXEL_SHADER
+layout(std140) uniform constants
+{
+    vec2 reversed_size;
+    int blur_radius;
+    float sigma;
+};
+
+const float pi = 3.141592653589793;
+
+uniform sampler2D input_texture;
+
+layout(location = 0) in vec2 uv;
+
+layout(location = 0) out vec4 out_color;
+
+void main() {
+    out_color = vec4(0.0);
+    float v = 2.0 * sigma.x * sigma.x;
+    float sum = 0;
+
+    for (int x = -blur_radius; x <= blur_radius; ++x) {
+        for (int y = -blur_radius; y <= blur_radius; ++y) {
+            float cf = exp(-(x * x + y * y) / v) / (pi * v);
+            out_color += texture(input_texture, uv + vec2(x, y) * reversed_size) * cf;
+            sum += cf;
+        }
+    }
+
+    out_color /= sum;
+}
+#endif
+```
+As it was mentioned earlier, the `VERTEX_SHADER` and `PIXEL_SHADER` macros are conveniently provided by the library when
+you specify the shader language as `GLSL`. That means, these two sections of the file could have been two different
+files instead and nothing would have changed.
+However, such a composition when two shader stages are combined in a single file can be very convenient 
+if you need to share some code between them.
+
+#### Vertex Shader
+
+The vertex shader takes two input parameters `position` and `tex_coords` that we mapped before in the `layout_elements`.
+It outputs two parameters as well `gl_Position` and `uv`.
+While `gl_Position` is a reserved keyword and variable to store vertex position, the **output** `uv` matches
+the other `uv` in the pixel shader **input** parameters, so this is how the vertex shader can provide some extra data
+to the pixel shader. And, the main function here is very simple:
+```glsl
+gl_Position = vec4(position, 0.0, 1.0);
+uv = tex_coords;
+```
+But it's not just assigning one vector to another, it also automagically interpolates `uv` by a given `gl_Position`
+(see https://www.khronos.org/opengl/wiki/Fragment_Shader). What this means for us is that now a central pixel in a
+triangle will correspond to a central pixel in the triangle on the texture. This way you can stretch texture to a given
+shape, in this case just two triangles forming a rectangle.
+
+#### Pixel Shader
+
+Pixel shader is usually the most complicated one. Here we see `constants` uniform, constant `pi`, `input_texture` with
+the sampler, input interpolated `uv` and the output `out_color`.
+We already covered all of these except for the `pi` and the `out_color`.
+`pi` is just a constant, you can define constant values right in the shader code, and they will most likely be inlined.
+And `out_color` is mapped to the `layout(location = 0)` which indicates it will be written to the `RTVFormats[0]` that
+we set in the pipeline description. The real texture where the color will be stored is determined at runtime, but the
+expected format is baked into the pipeline object. As for the algorithm of blur, it's super suboptimal and the formula
+may be easily found on the web, but overall the idea is that we have some distribution and the result is a weighted
+average of pixels around given position based on this distribution.
+One interesting thing is how `reversed_size` is used.
+As we know texture coordinates are `[0, 1]` but for blur we need to iterate over pixels.
+To solve this we use reversed size and multiply it by the pixel diff. This trick may be very useful if you need to
+convert screen coordinates to and from texture coordinates.
+
+### Rendering
