@@ -673,8 +673,114 @@ expected format is baked into the pipeline object. As for the algorithm of blur,
 may be easily found on the web, but overall the idea is that we have some distribution and the result is a weighted
 average of pixels around given position based on this distribution.
 One interesting thing is how `reversed_size` is used.
-As we know texture coordinates are `[0, 1]` but for blur we need to iterate over pixels.
+As we already know texture coordinates are `[0, 1]` but for blur we need to iterate over pixels.
 To solve this we use reversed size and multiply it by the pixel diff. This trick may be very useful if you need to
 convert screen coordinates to and from texture coordinates.
 
+### Applying
+
+We are almost ready to start rendering.
+The pipeline is ready to use, but we still need to fill out the buffers and set input and output textures.
+First, let's add a helper function to create texture as there will be 3 of them: input texture, render target texture
+and staging texture (used for reading the resulting image).
+
+```cpp
+Diligent::RefCntAutoPtr<Diligent::ITexture> create_texture(
+    Diligent::BIND_FLAGS bind_flags,
+    Diligent::USAGE usage,
+    Diligent::CPU_ACCESS_FLAGS cpu_access_flags,
+    const Diligent::TextureData* texture_data = nullptr
+) {
+    Diligent::RefCntAutoPtr<Diligent::ITexture> texture{};
+
+    Diligent::TextureDesc texture_description{};
+    texture_description.Type = Diligent::RESOURCE_DIM_TEX_2D;
+    texture_description.Width = width;
+    texture_description.Height = height;
+    texture_description.Format = texture_format;
+    texture_description.MipLevels = 1;
+    texture_description.BindFlags = bind_flags;
+    texture_description.Usage = usage;
+    texture_description.CPUAccessFlags = cpu_access_flags;
+    render_device->CreateTexture(texture_description, texture_data, &texture);
+
+    return texture;
+}
+```
+
+As textures are basically just buffers, they also must be created with the same Bind, Usage and CPUAccess flags.
+These flags will be different for different textures, that's why they are passed as arguments.
+The resource type is `RESOURCE_DIM_TEX_2D` because we need a 2D texture.
+Width and height will be taken from the input image and used for all three textures.
+Format is the same as the one used in the pipeline description.
+`MipLevels = 1` means that are not going to use [MipMaps](https://en.wikipedia.org/wiki/Mipmap).
+And `texture_data` is either `nullptr` or contains pixel data to initialize the texture with.
+
+Now let's see where this helper function is used. As part of the original API we have a public method
+`Image apply(const Image& image)` and here is its implementation:
+
+```cpp
+Image apply(const Image& image) {
+    width = image.width;
+    height = image.height;
+    
+    Diligent::TextureSubResData texture_sub_res_data{image.pixels.data(), static_cast<uint32_t>(image.width * 4)};
+    Diligent::TextureData texture_data{&texture_sub_res_data, 1};
+    auto input_texture = create_texture(
+      Diligent::BIND_SHADER_RESOURCE,
+      Diligent::USAGE_IMMUTABLE,
+      Diligent::CPU_ACCESS_NONE,
+      &texture_data
+    );
+    
+    auto render_target = create_texture(
+      Diligent::BIND_RENDER_TARGET,
+      Diligent::USAGE_DEFAULT,
+      Diligent::CPU_ACCESS_NONE
+    );
+    
+    auto staging_texture = create_texture(
+      Diligent::BIND_NONE,
+      Diligent::USAGE_STAGING,
+      Diligent::CPU_ACCESS_READ
+    );
+    
+    render(
+      input_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE),
+      render_target->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET)
+    );
+    
+    auto result = image;
+    read_pixels(render_target, staging_texture, result);
+    
+    return result;
+}
+```
+
+As was previously mentioned we need width and height to create textures, so let's just save them as private members.
+And then there are three calls to the `create_texture` method.
+
+* `input_texture` - is and immutable (written only once on creation), doesn't require any CPU access as it can't be
+  changed, and will be bound as a texture shader resource. In this case `texture_data` is not `nullptr` and contains
+  pixels data of the input image.
+* `render_target` - will be used as a Render Target, mostly accessed by GPU (Default), and we won't access its data from
+  the CPU at all.
+* `staging_texture` - is only used to read pixels data, so it won't be bound to anything, used only as a staging texture
+  and will be read by CPU.
+
+After all three textures are created we can acquire appropriate views for input and render target textures and bind them
+to the pipeline in the `render` method. After pushing rendering commands we are going to schedule a copying
+from `render_target` into `staging_texture`, read pixels data back and return them as an Image.
+Texture View is a way to interpret the Texture buffer as a something else, e.g. render target.
+This is essential because texture buffer may be in various states as well as behave as different types of attachments.
+For example, the same texture may have both `BIND_RENDER_TARGET` and `BIND_SHADER_RESOURCE` flags but can't be attached
+as both a render target and a shader resource at the same time and usually even transitioning between different
+states is costly.
+
 ### Rendering
+
+The `render` function like a pipeline description is verbose but not very difficult.
+First step is to fill out the buffers, here `Diligent::MapHelper` comes to help.
+All buffers must be mapped and unmapped properly to change their data. Plus, updating the buffer doesn't mean the GPU
+automatically sees updated data. MapHelper will solve the first problem by gracefully wrapping mapping and unmapping
+logic leaving the user only with data manipulation. 

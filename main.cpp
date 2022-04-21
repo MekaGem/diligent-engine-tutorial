@@ -140,7 +140,7 @@ private:
         texture_description.Type = Diligent::RESOURCE_DIM_TEX_2D;
         texture_description.Width = width;
         texture_description.Height = height;
-        texture_description.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
+        texture_description.Format = texture_format;
         texture_description.MipLevels = 1;
         texture_description.BindFlags = bind_flags;
         texture_description.Usage = usage;
