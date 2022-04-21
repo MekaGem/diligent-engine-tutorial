@@ -1,30 +1,30 @@
 # Diligent Engine Vulkan Tutorial
-This repo contains a very short but complete example about how you can use the 
+This repo contains a very short but complete example about how you can use the
 [Diligent Engine](https://github.com/DiligentGraphics/DiligentEngine) library to blur an image using a headless
-`Vulkan` renderer. The project uses [Conan](https://conan.io/) package manager and `CMake` and should be highly 
+`Vulkan` renderer. The project uses [Conan](https://conan.io/) package manager and `CMake` and should be highly
 reproducible. You will need a relatively modern compiler supporting C++20 as I use some newer features
-(e.g. [Designated initializers](https://en.cppreference.com/w/cpp/language/aggregate_initialization)) and see no reason 
+(e.g. [Designated initializers](https://en.cppreference.com/w/cpp/language/aggregate_initialization)) and see no reason
 to lower this requirement.
 
 Motivation
 ---
 For many years the default cross-platform way to start learning **"how to make your GPU render a triangle"** was to use
-OpenGL for desktop and OpenGL ES for mobile devices. 
+OpenGL for desktop and OpenGL ES for mobile devices.
 It's still a very good starting point especially considering how many modern GPU features are supported
 in newer versions of OpenGL and the enormous number of resources to help you along the way.
 But, it's not that cross-platform anymore as Apple deprecated OpenGL across all OSes in 2018, and it's also really painful
 to debug and run as a headless renderer.
-So, the point of this tutorial is to show how easy it's to make your own application that renders something not super 
+So, the point of this tutorial is to show how easy it's to make your own application that renders something not super
 trivial using Vulkan (without writing 1000+ lines of code) with the help of the Diligent Engine library which gracefully handles all the defaults letting the
 user decide whether they want to go deeper.
 To spice things up and to make this example more versatile I've also added image loading/saving.
 You will see how easy it is with Conan.
 
-And of course, even though I've tried my best to make the code as clean as possible, I'm assuming that the reader of 
+And of course, even though I've tried my best to make the code as clean as possible, I'm assuming that the reader of
 this tutorial has at least an average knowledge of C++.
 
-If you want to learn more about `Vulkan` there are plenty of resources out there, including 
-[Vulkan Tutorial](https://vulkan-tutorial.com/), 
+If you want to learn more about `Vulkan` there are plenty of resources out there, including
+[Vulkan Tutorial](https://vulkan-tutorial.com/),
 [Sascha Willems Vulkan](https://github.com/SaschaWillems/Vulkan),
 [LunarG Tutorial](https://vulkan.lunarg.com/doc/view/1.2.154.1/windows/tutorial/html/index.html)
 and of course official [documentation and samples](https://www.vulkan.org/learn).
@@ -39,7 +39,7 @@ To build this tutorial you will need:
 * `Conan` >= 1.33
 * Build system like `Visual Studio`, `Make` or `Ninja`
 
-If you don't have Python you can install it from the [official website](https://www.python.org/downloads/) or any other 
+If you don't have Python you can install it from the [official website](https://www.python.org/downloads/) or any other
 way you may prefer.  
 The same goes for CMake - [official website](https://cmake.org/download/).
 
@@ -48,7 +48,7 @@ following the [official documentation](https://docs.conan.io/en/latest/installat
 
 **_By default, Conan will create `.conan` cache directory in your user's home directory.
 You can also specify the location where the `.conan` cache directory will be created by setting the environment variable
-`CONAN_USER_HOME` see [reference](https://docs.conan.io/en/latest/reference/env_vars.html#conan-user-home). 
+`CONAN_USER_HOME` see [reference](https://docs.conan.io/en/latest/reference/env_vars.html#conan-user-home).
 This may be useful if you want to avoid any conflicts with existing cache._**
 
 Now you can download this repo either by using git
@@ -71,7 +71,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-And finally, you can now run the application at `build\bin\blur.exe` (Windows) or `build/bin/blur` (macOS/Linux) and 
+And finally, you can now run the application at `build\bin\blur.exe` (Windows) or `build/bin/blur` (macOS/Linux) and
 check that it works!
 
 Let's start!
@@ -80,7 +80,7 @@ Let's start!
 ### Project Configuration
 
 I already mentioned that in this tutorial we are going to use Diligent Engine, but more specifically we are going to
-use two Conan dependencies `diligent-core` and `stb` for loading and saving JPEGs. 
+use two Conan dependencies `diligent-core` and `stb` for loading and saving JPEGs.
 So here is the contents of the `conanfile.txt`:
 ```
 [requires]
@@ -94,24 +94,24 @@ The versions of the libraries refer to the ones in the default conan index https
 section determines how these libraries can be consumed later, in this case by CMake.
 
 The `CMakeLists.txt` is also quite simple. It specifies minimum required CMake version
-```
+```cmake
 cmake_minimum_required(VERSION 3.15)
 ```
 name of the project
-```
+```cmake
 project(diligent_engine_tutorial)
 ```
 C++ standard version
-```
+```cmake
 set(CMAKE_CXX_STANDARD 20)
 ```
 initializes conan build
-```
+```cmake
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup()
 ```
 and finally adds an executable and link **all** the Conan libraries to it
-```
+```cmake
 add_executable(blur main.cpp)
 target_link_libraries(blur PRIVATE ${CONAN_LIBS})
 target_include_directories(blur PRIVATE ${CONAN_INCLUDE_DIRS})
@@ -142,8 +142,8 @@ int main() {
     return 0;
 }
 ```
-The cute little fox picture is taken from https://unsplash.com/photos/HQqIOc8oYro and saved as a `fox.jpg` right inside 
-the repo for convenience. Should you wish to add some arguments parsing or support different image formats, it's 
+The cute little fox picture is taken from https://unsplash.com/photos/HQqIOc8oYro and saved as a `fox.jpg` right inside
+the repo for convenience. Should you wish to add some arguments parsing or support different image formats, it's
 completely up to you! But for now it's `fox.jpg` as an input and `output.jpg` as an output.
 
 So, as a storage for our images we will stick to a simple `Image` struct with two methods `load_from_file` and `save_to_file`
@@ -188,19 +188,19 @@ void ERROR(std::string_view message) {
     std::abort();
 }
 ```
-so we can easily handle any error we want later in this tutorial. Now let's move on to the implementation of the `Image` 
+so we can easily handle any error we want later in this tutorial. Now let's move on to the implementation of the `Image`
 and `BlurFilterApplication`.
 
 ### Load/Save JPEG
 
 First, let's deal with the simplest part - loading and saving images.
 Thanks to the awesome suite of [STB](https://github.com/nothings/stb)
-single-header libraries and its availability in Conan, we can literally implement the `Image` in about 20 lines 
+single-header libraries and its availability in Conan, we can literally implement the `Image` in about 20 lines
 of code. Again to keep things simple we assume here, that we always work with JPEG and always convert image to a
 4-channel RGBA image practically setting alpha channel to 255 (completely opaque).
 
 To use single-header `stb_image` and `stb_image_write` we need to add their implementation exactly once by defining
-`STB_IMAGE_IMPLEMENTATION` and `STB_IMAGE_WRITE_IMPLEMENTATION` respectively before including the headers in one the 
+`STB_IMAGE_IMPLEMENTATION` and `STB_IMAGE_WRITE_IMPLEMENTATION` respectively before including the headers in one the
 source files like this:
 
 ```cpp
@@ -211,11 +211,11 @@ source files like this:
 #include <stb_image_write.h>
 ```
 
-Saving to a file is basically just forwarding the data to the `stbi_write_jpg` function. The only interesting argument 
+Saving to a file is basically just forwarding the data to the `stbi_write_jpg` function. The only interesting argument
 here is **100** which is the "quality" (size vs image quality tradeoff) parameter and its value must be between 1 and 100.
 
 Loading is a bit more complicated than saving. First, we load the image data, saying that we want the result to have
-exactly **4** channels. If you want to get the image as-is, then ignore the last argument and provide a pointer to an `int` 
+exactly **4** channels. If you want to get the image as-is, then ignore the last argument and provide a pointer to an `int`
 where the actual number of channels will be stored. Second, copy the data to the `Image::pixels`. Third, free
 the internal buffer.
 
@@ -240,11 +240,11 @@ That's it. Now we can load `fox.jpg` and save `output.jpg`.
 ### Engine and Pipeline Initialization
 
 Diligent Engine is a "Modern GPU API Abstraction Layer", meaning it's designed to emphasise modern approach to graphics
-programming while still finding the commonalities between Vulkan, Direct3D 12 and Metal, and it also supports OpenGL and 
-Direct3D 11 to a certain extent. Moreover, Direct3D is considered to be the first class citizen in the Diligent Engine 
+programming while still finding the commonalities between Vulkan, Direct3D 12 and Metal, and it also supports OpenGL and
+Direct3D 11 to a certain extent. Moreover, Direct3D is considered to be the first class citizen in the Diligent Engine
 world.
 You can basically write a single HLSL shader and cross-compile it to all supported platforms.
-But we will not use this feature and will use only Vulkan and GLSL to SPIR-V builtin compiler 
+But we will not use this feature and will use only Vulkan and GLSL to SPIR-V builtin compiler
 [glslang](https://github.com/KhronosGroup/glslang).
 
 Now, let's proceed to initializing our Application.
@@ -276,7 +276,7 @@ then provide an appropriate callback function, otherwise passing `nullptr` will 
 
 Next, we need to create an Engine Factory.
 This is the first time we specify something related to Vulkan.
-This `Diligent::GetEngineFactoryVk` function is for a static linkage, there is also another way to retrieve 
+This `Diligent::GetEngineFactoryVk` function is for a static linkage, there is also another way to retrieve
 engine factory if `diligent-core` is linked dynamically.
 
 Then we need to create three core objects: `RenderDevice`, Immediate `DeviceContext` and a `ShaderSourceStreamFactory`.
@@ -357,7 +357,7 @@ The `Name` is used for debug purposes.
 `BindFlags` means the point where this data will be used in the rendering pipeline, or in other words the purpose of the
 data.
 `Usage` is Dynamic because we are going to update all the buffers every time we need to use the pipeline.
-And finally, the `CPUAccessFlags` is Write because again we are going to fill this memory by CPU and the driver must 
+And finally, the `CPUAccessFlags` is Write because again we are going to fill this memory by CPU and the driver must
 know it has to allow us to do so.
 The `nullptr` is provided instead of `BufferData` because we are not going to fill the memory right now.
 And, as mentioned above, buffers are created using `RenderDevice` and all three are also stored
@@ -414,9 +414,9 @@ The indices array is just two triplets of vertex indices, each triplet specifies
 * `(-1,-1), (+1,-1), (+1,+1)` - first triangle
 * `(+1,+1), (-1,+1), (-1,-1)` - second triangle
 
-The `Constants` buffer stores data needed for our blur implementation: radius, sigma and reversed size of the 
+The `Constants` buffer stores data needed for our blur implementation: radius, sigma and reversed size of the
 viewport. This buffer is just a sequence of bytes, but the alignment is important for it. This buffer will be used
-the shader with the `std140` memory layout. This layout is strictly defined 
+the shader with the `std140` memory layout. This layout is strictly defined
 [in the glsl specification](https://www.khronos.org/registry/OpenGL/specs/gl/glspec45.core.pdf#page=159)
 and that will help us translate bytes to bytes directly.
 We will use two rules out of this spec: 32-bit integers and floats have 32-bit alignment, vec2 or vector of two 32-bit
@@ -444,11 +444,11 @@ First, we need to configure top-level things:
 * The topology we are going to use `TRIANGLE_LIST`, as mentioned above it expects triplets of indices.
 * How many render targets we are going to use `NumRenderTargets = 1`.
 * The expected render target format `RTVFormats[0]` using a predefined constant:  
-`static constexpr auto texture_format = Diligent::TEX_FORMAT_RGBA8_UNORM;`.
+  `static constexpr auto texture_format = Diligent::TEX_FORMAT_RGBA8_UNORM;`.
 * Disable face culling and depth testing.
 * Specify that each vertex consists of
-  * 0: 2-component 32-bit float position
-  * 1: 2-component 32-bit float texture coordinates
+    * 0: 2-component 32-bit float position
+    * 1: 2-component 32-bit float texture coordinates
 * And finally, disable blending as we are not going to use it in this tutorial.
 ```cpp
 void create_pipeline() {
@@ -490,7 +490,7 @@ some default definitions like `VERTEX_SHADER` and `PIXEL_SHADER` we will combine
     Diligent::ShaderCreateInfo shader_ci{};
     shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
     shader_ci.pShaderSourceStreamFactory = shader_source_stream_factory;
-
+    
     Diligent::RefCntAutoPtr<Diligent::IShader> vertex_shader{};
     {
         shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
@@ -512,7 +512,7 @@ some default definitions like `VERTEX_SHADER` and `PIXEL_SHADER` we will combine
             ERROR("Failed to create pixel shader");
         }
     }
-
+    
     graphics_pipeline_ci.pVS = vertex_shader;
     graphics_pipeline_ci.pPS = pixel_shader;
 ```
@@ -575,7 +575,7 @@ supposed to hold such data. And when the shader starts, it will basically load a
 pipeline state. Without that `constants` uniform will still be unset.
 ```cpp
     render_device->CreateGraphicsPipelineState(graphics_pipeline_ci, &pipeline_state);
-    
+
     const auto constants = pipeline_state->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "constants");
     if (!constants) {
         ERROR("Failed to find 'constants' variable");
@@ -642,7 +642,7 @@ void main() {
 As it was mentioned earlier, the `VERTEX_SHADER` and `PIXEL_SHADER` macros are conveniently provided by the library when
 you specify the shader language as `GLSL`. That means, these two sections of the file could have been two different
 files instead and nothing would have changed.
-However, such a composition when two shader stages are combined in a single file can be very convenient 
+However, such a composition when two shader stages are combined in a single file can be very convenient
 if you need to share some code between them.
 
 #### Vertex Shader
@@ -727,27 +727,27 @@ Image apply(const Image& image) {
     Diligent::TextureSubResData texture_sub_res_data{image.pixels.data(), static_cast<uint32_t>(image.width * 4)};
     Diligent::TextureData texture_data{&texture_sub_res_data, 1};
     auto input_texture = create_texture(
-      Diligent::BIND_SHADER_RESOURCE,
-      Diligent::USAGE_IMMUTABLE,
-      Diligent::CPU_ACCESS_NONE,
-      &texture_data
+        Diligent::BIND_SHADER_RESOURCE,
+        Diligent::USAGE_IMMUTABLE,
+        Diligent::CPU_ACCESS_NONE,
+        &texture_data
     );
     
     auto render_target = create_texture(
-      Diligent::BIND_RENDER_TARGET,
-      Diligent::USAGE_DEFAULT,
-      Diligent::CPU_ACCESS_NONE
+        Diligent::BIND_RENDER_TARGET,
+        Diligent::USAGE_DEFAULT,
+        Diligent::CPU_ACCESS_NONE
     );
     
     auto staging_texture = create_texture(
-      Diligent::BIND_NONE,
-      Diligent::USAGE_STAGING,
-      Diligent::CPU_ACCESS_READ
+        Diligent::BIND_NONE,
+        Diligent::USAGE_STAGING,
+        Diligent::CPU_ACCESS_READ
     );
     
     render(
-      input_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE),
-      render_target->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET)
+        input_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE),
+        render_target->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET)
     );
     
     auto result = image;
