@@ -36,14 +36,7 @@ struct Image {
     }
 
     void save_to_file(std::string_view path) {
-        stbi_write_jpg(
-            path.data(),
-            width,
-            height,
-            4,
-            pixels.data(),
-            100
-        );
+        stbi_write_jpg(path.data(), width, height, 4, pixels.data(), 100);
     }
 };
 
@@ -70,6 +63,7 @@ public:
     };
     static constexpr std::string_view texture_uniform{"input_texture"};
     static constexpr auto texture_format = Diligent::TEX_FORMAT_RGBA8_UNORM;
+    static constexpr auto transition_mode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
 
     BlurFilterApplication() {
 #if NDEBUG
@@ -146,7 +140,7 @@ private:
         texture_description.Type = Diligent::RESOURCE_DIM_TEX_2D;
         texture_description.Width = width;
         texture_description.Height = height;
-        texture_description.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
+        texture_description.Format = texture_format;
         texture_description.MipLevels = 1;
         texture_description.BindFlags = bind_flags;
         texture_description.Usage = usage;
@@ -201,13 +195,19 @@ private:
         graphics_pipeline_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
         graphics_pipeline_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
 
+        std::vector<Diligent::LayoutElement> layout_elements = {
+            Diligent::LayoutElement{0, 0, 2, Diligent::VT_FLOAT32}, // position
+            Diligent::LayoutElement{1, 0, 2, Diligent::VT_FLOAT32}, // texture coordinates
+        };
+        graphics_pipeline_ci.GraphicsPipeline.InputLayout.LayoutElements = layout_elements.data();
+        graphics_pipeline_ci.GraphicsPipeline.InputLayout.NumElements = static_cast<uint32_t>(layout_elements.size());
+
         Diligent::RenderTargetBlendDesc blend_description{};
         blend_description.BlendEnable = false;
         graphics_pipeline_ci.GraphicsPipeline.BlendDesc.RenderTargets[0] = blend_description;
 
         Diligent::ShaderCreateInfo shader_ci{};
         shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
-        shader_ci.UseCombinedTextureSamplers = true;
         shader_ci.pShaderSourceStreamFactory = shader_source_stream_factory;
 
         Diligent::RefCntAutoPtr<Diligent::IShader> vertex_shader{};
@@ -231,13 +231,6 @@ private:
                 ERROR("Failed to create pixel shader");
             }
         }
-
-        std::vector<Diligent::LayoutElement> layout_elements = {
-            Diligent::LayoutElement{0, 0, 2, Diligent::VT_FLOAT32, false}, // position
-            Diligent::LayoutElement{1, 0, 2, Diligent::VT_FLOAT32, false}, // texture coordinates
-        };
-        graphics_pipeline_ci.GraphicsPipeline.InputLayout.LayoutElements = layout_elements.data();
-        graphics_pipeline_ci.GraphicsPipeline.InputLayout.NumElements = static_cast<uint32_t>(layout_elements.size());
 
         graphics_pipeline_ci.pVS = vertex_shader;
         graphics_pipeline_ci.pPS = pixel_shader;
@@ -310,22 +303,19 @@ private:
             *map_helper = indices;
         }
 
-        immediate_context->SetRenderTargets(1, &render_target, nullptr,
-                                            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediate_context->SetRenderTargets(1, &render_target, nullptr, transition_mode);
 
         immediate_context->SetPipelineState(pipeline_state);
 
-        Diligent::IBuffer* buffers[] = {vertex_buffer};
-        Diligent::Uint64 offset = 0;
         immediate_context->SetVertexBuffers(
             0,
             1,
-            buffers,
-            &offset,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+            &vertex_buffer,
+            nullptr,
+            transition_mode,
             Diligent::SET_VERTEX_BUFFERS_FLAG_RESET
         );
-        immediate_context->SetIndexBuffer(index_buffer, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediate_context->SetIndexBuffer(index_buffer, 0, transition_mode);
 
         const auto var = shader_resource_binding->GetVariableByName(
             Diligent::SHADER_TYPE_PIXEL,
@@ -336,10 +326,7 @@ private:
         }
         var->Set(input_texture);
 
-        immediate_context->CommitShaderResources(
-            shader_resource_binding,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
-        );
+        immediate_context->CommitShaderResources(shader_resource_binding, transition_mode);
 
         Diligent::DrawIndexedAttribs draw_indexed_attribs{};
         draw_indexed_attribs.NumIndices = static_cast<uint32_t>(indices.size());
@@ -354,16 +341,16 @@ private:
         Image& result
     ) {
         // Reset FrameBuffers
-        immediate_context->SetRenderTargets(0, nullptr, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_NONE);
+        immediate_context->SetRenderTargets(0, nullptr, nullptr, transition_mode);
 
         Diligent::RefCntAutoPtr<Diligent::IFence> fence{};
         render_device->CreateFence(Diligent::FenceDesc{}, &fence);
 
         Diligent::CopyTextureAttribs copy_attributes{
             texture,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+            transition_mode,
             staging_texture,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
+            transition_mode,
         };
         immediate_context->CopyTexture(copy_attributes);
         immediate_context->EnqueueSignal(fence, 1);
