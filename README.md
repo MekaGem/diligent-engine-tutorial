@@ -784,3 +784,195 @@ First step is to fill out the buffers, here `Diligent::MapHelper` comes to help.
 All buffers must be mapped and unmapped properly to change their data. Plus, updating the buffer doesn't mean the GPU
 automatically sees updated data. MapHelper will solve the first problem by gracefully wrapping mapping and unmapping
 logic leaving the user only with data manipulation. 
+
+```cpp
+void render(Diligent::ITextureView* input_texture, Diligent::ITextureView* render_target) {
+    {
+        Diligent::MapHelper<Constants> map_helper{
+            immediate_context,
+            constants_buffer,
+            Diligent::MAP_WRITE,
+            Diligent::MAP_FLAG_DISCARD,
+        };
+        map_helper->reversed_size = {1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height)};
+        map_helper->blur_radius = 50;
+        map_helper->sigma = 25.0;
+    }
+
+    {
+        Diligent::MapHelper<std::array<Vertex, 4>> map_helper{
+            immediate_context,
+            vertex_buffer,
+            Diligent::MAP_WRITE,
+            Diligent::MAP_FLAG_DISCARD,
+        };
+        *map_helper = vertices;
+    }
+
+    {
+        Diligent::MapHelper<std::array<uint32_t, 6>> map_helper{
+            immediate_context,
+            index_buffer,
+            Diligent::MAP_WRITE,
+            Diligent::MAP_FLAG_DISCARD,
+        };
+        *map_helper = indices;
+    }
+
+    // ...
+}
+```
+Flags `MAP_WRITE` and `MAP_FLAG_DISCARD` indicate that we are going to map buffers for writing and previous content is
+irrelevant and can be discarded by the GPU for optimization.
+MapHelper also provides some convenient operators, so you can use it as a pointer to the template type.
+Next we are going to set render targets, and in our case it's only one texture view `render_target`:
+```cpp
+    immediate_context->SetRenderTargets(1, &render_target, nullptr, transition_mode);
+```
+The `nullptr` stands for no depth/stencil view. And `transition_mode` is a constant equal to
+`Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION` which we will use for our operations, and it means that all
+resource transitions will happen synchronously.
+Resource state transitioning is something almost non-existent in older APIs like OpenGL, where such things happen
+under the hood controlled by the driver.
+And `RESOURCE_STATE_TRANSITION_MODE_TRANSITION` is a nice default way to explicitly say that you just want all the
+resources to be transitioned to the required states before running next operation. 
+
+Then set the current pipeline state object
+```cpp
+    immediate_context->SetPipelineState(pipeline_state);
+```
+and also set vertex and index buffers
+```cpp
+    immediate_context->SetVertexBuffers(
+        0,
+        1,
+        &vertex_buffer,
+        nullptr,
+        transition_mode,
+        Diligent::SET_VERTEX_BUFFERS_FLAG_RESET
+    );
+    immediate_context->SetIndexBuffer(index_buffer, 0, transition_mode);
+```
+
+Now, we need to set `input_texture` to the shader variable, `shader_resource_binding` can find variables by location or
+by the name.
+```cpp
+    const auto var = shader_resource_binding->GetVariableByName(
+        Diligent::SHADER_TYPE_PIXEL,
+        texture_uniform.data()
+    );
+    if (!var) {
+        ERROR("Failed to find 'input_texture' variable");
+    }
+    var->Set(input_texture);
+    
+    immediate_context->CommitShaderResources(shader_resource_binding, transition_mode);
+```
+Additionally, call `CommitShaderResources` so that `immediate_context` can properly update changed variables in the
+current pipeline state object.
+
+And finally, push a render command.
+`NumIndices` must be a multiple of 3 and the `IndexType` must match our index buffer content.
+`DRAW_FLAG_VERIFY_ALL` flag tell Diligent Engine that you want to verify everything possible in this draw call.
+You may consider using `DRAW_FLAG_NONE` for performance reasons.
+```cpp
+    Diligent::DrawIndexedAttribs draw_indexed_attribs{};
+    draw_indexed_attribs.NumIndices = static_cast<uint32_t>(indices.size());
+    draw_indexed_attribs.IndexType = Diligent::VT_UINT32;
+    draw_indexed_attribs.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
+    immediate_context->DrawIndexed(draw_indexed_attribs);
+}
+```
+That's it, the render command it issued and at some point of time in the future it should finish and write resulting
+pixels into the `render_target` texture.
+But GPU works in parallel with CPU, so we need to do one more synchronized copy to know when it's time to read
+pixels data.
+
+### Read Pixels
+
+There is a function in OpenGL named `glReadPixels` and it's one of the most complicated parts of the API.
+And the reason is that it both "waits" for the resource to be ready and then reads its pixel data.
+In Vulkan we need to copy the texture to a place from where it can be read, explicitly wait for copy to finish and
+only after that map the memory for reading.
+
+There is one more primitive we will need for synchronization - Fence.
+There are two types of synchronization primitives in Vulkan: Fences and Semaphores.
+Semaphores are used to add order between GPU and GPU operations.
+Fences are used to add order between GPU and CPU operations.
+In our case we are going to use a Fence since we only need to know when copying is finished by GPU to start reading by CPU.
+Fence is basically an only-increasing integer which GPU can increase and CPU can wait for until it's greater or equal
+a given value.
+But first let's explicitly reset frame buffers.
+```cpp
+void read_pixels(
+        Diligent::RefCntAutoPtr<Diligent::ITexture>& texture,
+        Diligent::RefCntAutoPtr<Diligent::ITexture>& staging_texture,
+        Image& result
+) {
+    // Reset FrameBuffers
+    immediate_context->SetRenderTargets(0, nullptr, nullptr, transition_mode);
+    
+    // ...
+```
+This happens implicitly when copying operation is issued, but it generates warnings so let's do it manually instead.
+
+Then, create a Fence:
+```cpp
+    Diligent::RefCntAutoPtr<Diligent::IFence> fence{};
+    render_device->CreateFence(Diligent::FenceDesc{}, &fence);
+```
+
+Issue a copy command from `render_target` to `staging_texture`:
+```cpp
+    Diligent::CopyTextureAttribs copy_attributes{
+        texture,
+        transition_mode,
+        staging_texture,
+        transition_mode,
+    };
+    immediate_context->CopyTexture(copy_attributes);
+```
+
+And right after that add synchronization logic:
+```cpp
+    immediate_context->EnqueueSignal(fence, 1);
+    immediate_context->Flush();
+```
+The `EnqueueSignal` add a command right after the previous submitted one that changes the value of the Fence to the
+value provided.
+And `Flush` is required before you start waiting, because without `Flush` you may end up in a deadlock situation, where
+you issued a command, but it wasn't actually pushed to the GPU and you are now indefinitely waiting for it finish.
+
+So right after the `Flush` we are waiting for the Fence to become 1:
+```cpp
+    // Wait for copying to finish
+    fence->Wait(1);
+```
+And finally we map the buffer, read pixels data, copy it into the resulting `Image` and unmap the buffer back:
+```cpp
+    Diligent::MappedTextureSubresource texture_subresource{};
+    immediate_context->MapTextureSubresource(
+        staging_texture.RawPtr(),
+        0,
+        0,
+        Diligent::MAP_READ,
+        Diligent::MAP_FLAG_DO_NOT_WAIT,
+        nullptr,
+        texture_subresource
+    );
+
+    if (texture_subresource.Stride != width * 4) {
+        ERROR("Stride value must be equal to width * 4");
+    }
+    std::memcpy(result.pixels.data(), texture_subresource.pData, width * height * 4);
+
+    immediate_context->UnmapTextureSubresource(staging_texture.RawPtr(), 0, 0);
+}
+```
+
+Ta-da! This was the final piece of this tutorial.
+The application is now capable of blurring JPEG files and may be run even on a headless server with GPU
+(or even without GPU if you installed some fake CPU Vulkan drivers, for example [Mesa](https://www.mesa3d.org/)
+has CPU-based Vulkan drivers).
+
+I hope you enjoyed reading it and if you have any questions, fixes or other suggestions please reach out to me at `mekagem@gmail.com`.

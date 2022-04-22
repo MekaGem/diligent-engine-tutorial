@@ -307,13 +307,11 @@ private:
 
         immediate_context->SetPipelineState(pipeline_state);
 
-        Diligent::IBuffer* buffers[] = {vertex_buffer};
-        Diligent::Uint64 offset = 0;
         immediate_context->SetVertexBuffers(
             0,
             1,
-            buffers,
-            &offset,
+            &vertex_buffer,
+            nullptr,
             transition_mode,
             Diligent::SET_VERTEX_BUFFERS_FLAG_RESET
         );
